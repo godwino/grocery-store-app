@@ -1,0 +1,13 @@
+store,item,current_stock,lead_time_units,unit_cost
+Lagos Central,Rice 5kg,120,2,12.5
+Lagos Central,Maize Flour 2kg,80,1,4.2
+Lagos Central,Cooking Oil 1L,60,3,6.8
+Lagos Central,Beans 2kg,50,2,5.5
+Accra North,Rice 5kg,90,2,12.5
+Accra North,Maize Flour 2kg,70,1,4.2
+Accra North,Cooking Oil 1L,40,3,6.8
+Accra North,Beans 2kg,45,2,5.5
+Kampala East,Sugar 1kg,55,2,3.2
+Kampala East,Milk 1L,65,1,2.1
+Kampala East,Bread Loaf,35,1,1.4
+Kampala East,Tomato Paste 400g,40,2,2.6

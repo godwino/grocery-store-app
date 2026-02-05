@@ -1,0 +1,7 @@
+sku,product,category,unit,qty,reorder_level,cost_price,sell_price,supplier,last_restock,expiry_date
+RICE-5KG,Local Rice 5kg,Grains,bag,18,10,6500,8200,Mama Kemi Foods,2026-02-01,
+BEANS-2KG,Brown Beans 2kg,Grains,bag,6,8,3200,4000,Ajayi Agro,2026-01-28,
+GARRI-WHT,Garri (White) 1kg,Staples,bag,42,15,900,1300,Oga Farm,2026-02-02,
+PALM-OIL-1L,Palm Oil 1L,Oils,bottle,9,12,1500,2200,Delta Press,2026-01-30,2026-08-01
+TOMATO-PASTE,Tomato Paste 70g,Canned,tin,120,40,200,350,Lagos Foods,2026-01-25,2026-12-31
+SPICE-SUYA,Suya Pepper 250g,Spices,jar,5,6,700,1200,Arewa Spice,2026-01-26,2026-07-15
