@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
-from passlib.hash import bcrypt
+from passlib.hash import pbkdf2_sha256
 from sqlalchemy import create_engine, text
 
 load_dotenv()
@@ -151,7 +151,7 @@ def _ensure_admin(engine):
         if res is None:
             conn.execute(
                 text("INSERT INTO users (email, password_hash, role) VALUES (:email, :ph, :role)"),
-                {"email": ADMIN_EMAIL, "ph": bcrypt.hash(ADMIN_PASSWORD), "role": "admin"},
+                {"email": ADMIN_EMAIL, "ph": pbkdf2_sha256.hash(ADMIN_PASSWORD), "role": "admin"},
             )
 
 
@@ -160,7 +160,7 @@ def _authenticate(engine, email: str, password: str):
         row = conn.execute(text("SELECT email, password_hash, role FROM users WHERE email=:email"), {"email": email}).fetchone()
     if not row:
         return None
-    if bcrypt.verify(password, row.password_hash):
+    if pbkdf2_sha256.verify(password, row.password_hash):
         return {"email": row.email, "role": row.role}
     return None
 
@@ -169,7 +169,7 @@ def _create_user(engine, email: str, password: str, role: str):
     with engine.begin() as conn:
         conn.execute(
             text("INSERT INTO users (email, password_hash, role) VALUES (:email, :ph, :role)"),
-            {"email": email, "ph": bcrypt.hash(password), "role": role},
+            {"email": email, "ph": pbkdf2_sha256.hash(password), "role": role},
         )
 
 
