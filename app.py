@@ -172,6 +172,25 @@ def _create_user(engine, email: str, password: str, role: str):
             {"email": email, "ph": pbkdf2_sha256.hash(password), "role": role},
         )
 
+def _load_inventory(engine) -> pd.DataFrame:
+    return pd.read_sql(text("SELECT store, item, current_stock, lead_time_units, unit_cost FROM inventory"), engine)
+
+
+def _load_demand(engine) -> pd.DataFrame:
+    return pd.read_sql(text("SELECT store, item, period, quantity FROM demand"), engine)
+
+
+def _save_inventory(engine, df: pd.DataFrame) -> None:
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM inventory"))
+    df.to_sql("inventory", engine, if_exists="append", index=False)
+
+
+def _save_demand(engine, df: pd.DataFrame) -> None:
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM demand"))
+    df.to_sql("demand", engine, if_exists="append", index=False)
+
 
 def _send_email(subject: str, body: str, to_email: str):
     if not all([SMTP_HOST, SMTP_USER, SMTP_PASSWORD, SMTP_FROM]):
@@ -284,6 +303,9 @@ with col2:
 st.caption("Optional for multi-store: add a 'store' column to both files.")
 
 use_sample = st.toggle("Use sample data", value=False)
+use_db = False
+if engine is not None:
+    use_db = st.toggle("Use data from database", value=False)
 
 st.subheader("Templates")
 template_col1, template_col2 = st.columns(2)
@@ -369,6 +391,9 @@ sample_demand = pd.DataFrame(
 if use_sample:
     inventory = sample_inventory.copy()
     demand = sample_demand.copy()
+elif use_db:
+    inventory = _load_inventory(engine)
+    demand = _load_demand(engine)
 else:
     if inv_file is None:
         st.warning("Upload inventory CSV or enable sample data.")
@@ -386,6 +411,17 @@ if demand is not None:
 inventory = _coerce_numeric(inventory, ["current_stock", "lead_time_units", "unit_cost"])
 if demand is not None:
     demand = _coerce_numeric(demand, ["period", "quantity"])
+
+if engine is not None and not use_db:
+    with st.expander("Database"):
+        st.write("Save the current CSV data into the database for future use.")
+        if st.button("Save inventory + demand to DB"):
+            if demand is None:
+                st.error("Upload demand history before saving to the database.")
+            else:
+                _save_inventory(engine, inventory)
+                _save_demand(engine, demand)
+                st.success("Saved to database.")
 
 st.subheader("2) Filters")
 if "store" in inventory.columns:
