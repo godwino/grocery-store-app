@@ -395,6 +395,7 @@ with col2:
 
 st.caption("Optional for multi-store: add a 'store' column to both files.")
 
+use_demo = st.toggle("Use demo data (Canada stores)", value=False)
 use_sample = st.toggle("Use sample data", value=False)
 use_db = False
 if engine is not None:
@@ -481,7 +482,68 @@ sample_demand = pd.DataFrame(
     }
 )
 
-if use_sample:
+demo_inventory = pd.DataFrame(
+    {
+        "store": [
+            "Calgary East",
+            "Calgary West",
+            "Airdrie North",
+            "Edmonton South",
+            "Edmonton West",
+            "Airdrie South",
+        ],
+        "item": [
+            "Rice 5kg",
+            "Maize Flour 2kg",
+            "Cooking Oil 1L",
+            "Beans 2kg",
+            "Milk 1L",
+            "Tomato Paste 400g",
+        ],
+        "current_stock": [110, 75, 55, 48, 62, 38],
+        "lead_time_units": [2, 1, 3, 2, 1, 2],
+        "unit_cost": [12.5, 4.2, 6.8, 5.5, 2.1, 2.6],
+    }
+)
+
+demo_demand = pd.DataFrame(
+    {
+        "store": ["Calgary East"] * 4 + ["Calgary West"] * 4 + ["Airdrie North"] * 4 + ["Edmonton South"] * 4 + ["Edmonton West"] * 4 + ["Airdrie South"] * 4,
+        "item": [
+            "Rice 5kg",
+            "Rice 5kg",
+            "Rice 5kg",
+            "Rice 5kg",
+            "Maize Flour 2kg",
+            "Maize Flour 2kg",
+            "Maize Flour 2kg",
+            "Maize Flour 2kg",
+            "Cooking Oil 1L",
+            "Cooking Oil 1L",
+            "Cooking Oil 1L",
+            "Cooking Oil 1L",
+            "Beans 2kg",
+            "Beans 2kg",
+            "Beans 2kg",
+            "Beans 2kg",
+            "Milk 1L",
+            "Milk 1L",
+            "Milk 1L",
+            "Milk 1L",
+            "Tomato Paste 400g",
+            "Tomato Paste 400g",
+            "Tomato Paste 400g",
+            "Tomato Paste 400g",
+        ],
+        "period": [1, 2, 3, 4] * 6,
+        "quantity": [30, 28, 35, 32, 18, 20, 19, 22, 14, 13, 15, 16, 12, 11, 13, 12, 25, 27, 26, 28, 10, 12, 11, 13],
+    }
+)
+
+if use_demo:
+    inventory = demo_inventory.copy()
+    demand = demo_demand.copy()
+elif use_sample:
     inventory = sample_inventory.copy()
     demand = sample_demand.copy()
 elif use_db:
