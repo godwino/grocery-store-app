@@ -1,0 +1,3 @@
+60-second demo script:
+
+“Here’s how it works. First, you upload your inventory—current stock, lead time, and unit cost. Then you upload your sales history. The system forecasts demand, calculates safety stock, and gives you a reorder point for every item. It also recommends the optimal order quantity using EOQ, so you don’t over-buy. The action list shows exactly what needs reordering now, and you can export it in one click. The result is fewer stock-outs, less waste, and better cash flow. It’s simple, fast, and designed for real grocery operations.”
