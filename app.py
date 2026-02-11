@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 from passlib.hash import pbkdf2_sha256
+from passlib.exc import InvalidHashError
 from sqlalchemy import create_engine, text
 
 load_dotenv()
@@ -228,8 +229,17 @@ def _authenticate(engine, email: str, password: str):
         row = conn.execute(text("SELECT email, password_hash, role FROM users WHERE email=:email"), {"email": email}).fetchone()
     if not row:
         return None
-    if pbkdf2_sha256.verify(password, row.password_hash):
-        return {"email": row.email, "role": row.role}
+    try:
+        if pbkdf2_sha256.verify(password, row.password_hash):
+            return {"email": row.email, "role": row.role}
+    except InvalidHashError:
+        if row.email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("UPDATE users SET password_hash=:ph WHERE email=:email"),
+                    {"email": ADMIN_EMAIL, "ph": pbkdf2_sha256.hash(ADMIN_PASSWORD)},
+                )
+            return {"email": row.email, "role": row.role}
     return None
 
 
