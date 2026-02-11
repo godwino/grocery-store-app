@@ -73,6 +73,74 @@ def _coerce_numeric(df: pd.DataFrame, cols: list) -> pd.DataFrame:
     return df
 
 
+def _mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    return float(np.mean(np.abs(y_true - y_pred))) if len(y_true) else float("nan")
+
+
+def _mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    mask = y_true != 0
+    if not np.any(mask):
+        return float("nan")
+    return float(np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100)
+
+
+def _backtest_ma(series: np.ndarray, window: int) -> tuple[list[float], list[float]]:
+    preds = []
+    actuals = []
+    for i in range(window, len(series)):
+        preds.append(float(np.mean(series[i - window:i])))
+        actuals.append(float(series[i]))
+    return preds, actuals
+
+
+def _backtest_es(series: np.ndarray, alpha: float) -> tuple[list[float], list[float]]:
+    if len(series) < 2:
+        return [], []
+    level = float(series[0])
+    preds = []
+    actuals = []
+    for i in range(1, len(series)):
+        preds.append(level)
+        actuals.append(float(series[i]))
+        level = alpha * float(series[i]) + (1 - alpha) * level
+    return preds, actuals
+
+
+def _backtest_metrics(demand_df: pd.DataFrame, group_cols: list, window: int, alpha: float) -> pd.DataFrame:
+    rows = []
+    for _, g in demand_df.sort_values(group_cols + ["period"]).groupby(group_cols):
+        series = g["quantity"].to_numpy(dtype=float)
+        if len(series) < 3:
+            continue
+        ma_pred, ma_act = _backtest_ma(series, window)
+        es_pred, es_act = _backtest_es(series, alpha)
+        rows.append(
+            {
+                **{c: g.iloc[0][c] for c in group_cols},
+                "ma_mae": _mae(np.array(ma_act), np.array(ma_pred)),
+                "ma_mape": _mape(np.array(ma_act), np.array(ma_pred)),
+                "es_mae": _mae(np.array(es_act), np.array(es_pred)),
+                "es_mape": _mape(np.array(es_act), np.array(es_pred)),
+                "n_periods": len(series),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _data_quality_report(inventory_df: pd.DataFrame, demand_df: pd.DataFrame | None) -> pd.DataFrame:
+    rows = []
+    rows.append({"check": "inventory_missing_values", "count": int(inventory_df.isna().sum().sum())})
+    rows.append({"check": "inventory_negative_stock", "count": int((inventory_df["current_stock"] < 0).sum())})
+    rows.append({"check": "inventory_nonpositive_lead_time", "count": int((inventory_df["lead_time_units"] <= 0).sum())})
+    rows.append({"check": "inventory_nonpositive_unit_cost", "count": int((inventory_df["unit_cost"] <= 0).sum())})
+    rows.append({"check": "inventory_duplicate_rows", "count": int(inventory_df.duplicated().sum())})
+    if demand_df is not None:
+        rows.append({"check": "demand_missing_values", "count": int(demand_df.isna().sum().sum())})
+        rows.append({"check": "demand_negative_quantity", "count": int((demand_df["quantity"] < 0).sum())})
+        rows.append({"check": "demand_duplicate_rows", "count": int(demand_df.duplicated().sum())})
+    return pd.DataFrame(rows)
+
+
 def _compute_forecast_ma(demand_df: pd.DataFrame, window: int, group_cols: list) -> pd.DataFrame:
     forecast = (
         demand_df.sort_values(group_cols + ["period"])
@@ -249,6 +317,7 @@ with st.sidebar:
     forecast_method = st.selectbox("Forecast method", ["Moving average", "Exponential smoothing"], index=0)
     ma_window = st.slider("Moving average window", min_value=2, max_value=12, value=4)
     es_alpha = st.slider("Smoothing alpha", min_value=0.05, max_value=0.95, value=0.3, step=0.05)
+    auto_model = st.toggle("Auto-select best model (MAPE)", value=False)
 
     st.header("Notifications")
     notify_email = st.text_input("Send alerts to email")
@@ -412,6 +481,10 @@ inventory = _coerce_numeric(inventory, ["current_stock", "lead_time_units", "uni
 if demand is not None:
     demand = _coerce_numeric(demand, ["period", "quantity"])
 
+st.subheader("1b) Data quality checks")
+dq_report = _data_quality_report(inventory, demand)
+st.dataframe(dq_report, use_container_width=True)
+
 if engine is not None and not use_db:
     with st.expander("Database"):
         st.write("Save the current CSV data into the database for future use.")
@@ -435,6 +508,18 @@ if "store" in inventory.columns:
         demand = demand[demand["store"].isin(filter_store)].copy()
 
 st.subheader("3) Forecast demand")
+if demand is not None and auto_model:
+    group_cols = ["item"]
+    if "store" in inventory.columns:
+        group_cols = ["store", "item"]
+    bt = _backtest_metrics(demand, group_cols, ma_window, es_alpha)
+    if not bt.empty:
+        ma_score = bt["ma_mape"].mean()
+        es_score = bt["es_mape"].mean()
+        if np.isfinite(es_score) and (not np.isfinite(ma_score) or es_score < ma_score):
+            forecast_method = "Exponential smoothing"
+        else:
+            forecast_method = "Moving average"
 st.caption(f"Method: {forecast_method}")
 
 group_cols = ["item"]
@@ -452,6 +537,22 @@ else:
 
 st.dataframe(forecast, use_container_width=True)
 
+if demand is not None:
+    st.subheader("3b) Backtest (model evaluation)")
+    bt = _backtest_metrics(demand, group_cols, ma_window, es_alpha)
+    if bt.empty:
+        st.info("Not enough demand history to backtest.")
+    else:
+        summary = pd.DataFrame(
+            {
+                "model": ["Moving average", "Exponential smoothing"],
+                "MAPE %": [bt["ma_mape"].mean(), bt["es_mape"].mean()],
+                "MAE": [bt["ma_mae"].mean(), bt["es_mae"].mean()],
+            }
+        )
+        st.dataframe(summary, use_container_width=True)
+        st.caption("Lower MAPE/MAE is better. Auto-select uses MAPE.")
+
 st.subheader("4) Inventory optimization")
 
 inventory = inventory.merge(forecast, on=group_cols, how="left")
@@ -464,14 +565,21 @@ if demand is not None:
     demand_std = demand.groupby(group_cols)["quantity"].std().rename("demand_std").reset_index()
     inventory = inventory.merge(demand_std, on=group_cols, how="left")
     inventory["demand_std"] = inventory["demand_std"].fillna(0.0)
+    demand_n = demand.groupby(group_cols)["quantity"].count().rename("demand_n").reset_index()
+    inventory = inventory.merge(demand_n, on=group_cols, how="left")
+    inventory["demand_n"] = inventory["demand_n"].fillna(1.0)
 else:
     inventory["demand_std"] = 0.0
+    inventory["demand_n"] = 1.0
 
 z = SERVICE_Z[service_level]
 lead_time = inventory["lead_time_units"].clip(lower=1)
 inventory["safety_stock"] = z * inventory["demand_std"] * np.sqrt(lead_time)
 
 inventory["reorder_point"] = inventory["avg_demand"] * inventory["lead_time_units"] + inventory["safety_stock"]
+
+inventory["demand_ci_low"] = (inventory["avg_demand"] - z * inventory["demand_std"] / np.sqrt(inventory["demand_n"])).clip(lower=0)
+inventory["demand_ci_high"] = inventory["avg_demand"] + z * inventory["demand_std"] / np.sqrt(inventory["demand_n"])
 
 inventory["eoq"] = np.sqrt(
     _safe_div(2 * inventory["annual_demand"] * order_cost, carrying_rate * inventory["unit_cost"])
@@ -491,6 +599,8 @@ show_cols = [
     "item",
     "current_stock",
     "avg_demand",
+    "demand_ci_low",
+    "demand_ci_high",
     "lead_time_units",
     "safety_stock",
     "reorder_point",
