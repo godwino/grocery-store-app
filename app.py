@@ -29,6 +29,8 @@ REQUIRED_DEM_COLS = {"item", "period", "quantity"}
 DB_URL = os.getenv("DATABASE_URL")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@example.com")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+DEMO_EMAIL = os.getenv("DEMO_EMAIL", "demo@grocery.app")
+DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "demo1234")
 
 SMTP_HOST = os.getenv("SMTP_HOST")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
@@ -223,6 +225,14 @@ def _ensure_admin(engine):
                 {"email": ADMIN_EMAIL, "ph": pbkdf2_sha256.hash(ADMIN_PASSWORD), "role": "admin"},
             )
 
+def _ensure_demo(engine):
+    with engine.begin() as conn:
+        res = conn.execute(text("SELECT 1 FROM users WHERE email=:email"), {"email": DEMO_EMAIL}).fetchone()
+        if res is None:
+            conn.execute(
+                text("INSERT INTO users (email, password_hash, role) VALUES (:email, :ph, :role)"),
+                {"email": DEMO_EMAIL, "ph": pbkdf2_sha256.hash(DEMO_PASSWORD), "role": "viewer"},
+            )
 
 def _authenticate(engine, email: str, password: str):
     with engine.begin() as conn:
@@ -311,6 +321,7 @@ engine = _db_engine()
 if engine:
     _init_db(engine)
     _ensure_admin(engine)
+    _ensure_demo(engine)
 
 with st.sidebar:
     st.header("Settings")
@@ -345,6 +356,9 @@ if engine is not None:
             email = st.text_input("Email")
         with login_col2:
             password = st.text_input("Password", type="password")
+        with st.expander("Demo access"):
+            st.write(f"Email: {DEMO_EMAIL}")
+            st.write(f"Password: {DEMO_PASSWORD}")
         if st.button("Sign in"):
             user = _authenticate(engine, email, password)
             if user:
@@ -498,8 +512,11 @@ st.dataframe(dq_report, use_container_width=True)
 if engine is not None and not use_db:
     with st.expander("Database"):
         st.write("Save the current CSV data into the database for future use.")
-        if st.button("Save inventory + demand to DB"):
-            if demand is None:
+        can_write = st.session_state.get("user", {}).get("role") in {"admin", "manager"}
+        if st.button("Save inventory + demand to DB", disabled=not can_write):
+            if not can_write:
+                st.error("Demo accounts cannot write to the database.")
+            elif demand is None:
                 st.error("Upload demand history before saving to the database.")
             else:
                 _save_inventory(engine, inventory)
